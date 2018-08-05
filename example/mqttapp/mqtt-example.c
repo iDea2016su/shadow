@@ -41,6 +41,9 @@ typedef struct {
 #define TOPIC_ERROR             "/"PRODUCT_KEY"/"DEVICE_NAME"/update/error"
 #define TOPIC_GET               "/"PRODUCT_KEY"/"DEVICE_NAME"/get"
 
+#define TOPIC_SHADOW               "/shadow/update/"PRODUCT_KEY"/"DEVICE_NAME""
+#define TOPIC_SHADOW_GET           "/shadow/get/"PRODUCT_KEY"/"DEVICE_NAME""
+
 #define MSG_LEN_MAX             (2048)
 
 int cnt = 0;
