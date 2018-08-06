@@ -8,16 +8,18 @@
 
 #include "iot_import.h"
 #include "iot_export.h"
+#include "iot_export_mqtt.h"
 #include "aos/log.h"
 #include "aos/yloop.h"
 #include "aos/network.h"
 #include <netmgr.h>
 #include <aos/kernel.h>
+#include <k_err.h>
 #include <netmgr.h>
 #include <aos/cli.h>
 #include <aos/cloud.h>
-#include "iot_export_mqtt.h"
-#include "mqtt_instance.h"
+
+#include "soc_init.h"
 
 #ifdef AOS_ATCMD
 #include <atparser.h>
@@ -46,6 +48,24 @@ typedef struct {
 
 #define MSG_LEN_MAX             (2048)
 
+static int  led_fre = 2; 
+
+void set_led_fre(int p_fre);
+int get_led_fre(void);
+
+static void app_delayed_action(void *arg)
+{
+    static int count =0;
+    int fre_count = get_led_fre();
+    count++;
+    if(count>=(10/fre_count))
+    {
+
+        hal_gpio_output_toggle(&brd_gpio_table[8]);
+        count = 0;
+    }
+    aos_post_delayed_action(100, app_delayed_action, NULL);
+}
 int cnt = 0;
 static int is_subscribed = 0;
 
@@ -243,6 +263,8 @@ int application_start(int argc, char *argv[])
 
     aos_cli_register_command(&mqttcmd);
 
+    aos_post_delayed_action(100, app_delayed_action, NULL);
+
     aos_loop_run();
     return 0;
 }
@@ -250,4 +272,14 @@ int application_start(int argc, char *argv[])
 static void ota_init(void *P)
 {
     aos_post_event(EV_SYS, CODE_SYS_ON_START_FOTA, 0u);
+}
+
+void set_led_fre(int p_fre)
+{
+    led_fre = p_fre;
+}
+
+int get_led_fre(void)
+{
+    return led_fre;
 }
