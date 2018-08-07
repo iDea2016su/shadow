@@ -48,21 +48,33 @@ typedef struct {
 
 #define MSG_LEN_MAX             (2048)
 
-static int  led_fre = 2; 
+static int  led_fre = 0; 
 
 void set_led_fre(int p_fre);
 int get_led_fre(void);
+
+static int first_get_shadow = 1;
+static int first_send_shadow = 0;
+static int shadow_version = -1;
+static int shadow_reply = 0;
+
+void set_shadow_version(int p_ver);
+int get_shadow_version(void);
+void update_shadow_version(char *str);
 
 static void app_delayed_action(void *arg)
 {
     static int count =0;
     int fre_count = get_led_fre();
     count++;
-    if(count>=(10/fre_count))
+    if(fre_count>0)
     {
+        if(count>=(10/fre_count))
+        {
 
-        hal_gpio_output_toggle(&brd_gpio_table[8]);
-        count = 0;
+            hal_gpio_output_toggle(&brd_gpio_table[8]);
+            count = 0;
+        }
     }
     aos_post_delayed_action(100, app_delayed_action, NULL);
 }
@@ -102,17 +114,24 @@ static void mqtt_sub_callback(char *topic, int topic_len, void *payload, int pay
         (char *)payload,
         payload_len);
     LOG("----");
-
-#ifdef MQTT_PRESS_TEST
-    sub_counter++;
-    int rc = mqtt_publish(TOPIC_UPDATE, IOTX_MQTT_QOS1, payload, payload_len);
-    if (rc < 0) {
-        LOG("IOT_MQTT_Publish fail, ret=%d", rc);
-    } else {
-        pub_counter++;
+    if(NULL != strstr(payload,"shadow content is empty"))
+    {
+        first_send_shadow = 1;
+        led_fre = 2;
+        set_shadow_version(1);
     }
-    LOG("RECV=%d, SEND=%d", sub_counter, pub_counter);
-#endif MQTT_PRESS_TEST
+    if(NULL != strstr(payload,"\"desired\":{\"frequency\":\"fre0"))
+    {
+        led_fre = 2;
+        shadow_reply = 1;
+        update_shadow_version(payload);
+    }
+    if(NULL != strstr(payload,"\"desired\":{\"frequency\":\"fre1"))
+    {
+        led_fre = 5;
+        shadow_reply = 1;
+        update_shadow_version(payload);
+    }
 }
 
 
@@ -128,7 +147,7 @@ static void mqtt_work(void *parms)
 
     if (is_subscribed == 0) {
         /* Subscribe the specific topic */
-        rc = mqtt_subscribe(TOPIC_GET, mqtt_sub_callback, NULL);
+        rc = mqtt_subscribe(TOPIC_SHADOW_GET, mqtt_sub_callback, NULL);
         if (rc < 0) {
             // IOT_MQTT_Destroy(&pclient);
             LOG("IOT_MQTT_Subscribe() failed, rc = %d", rc);
@@ -139,16 +158,75 @@ static void mqtt_work(void *parms)
 #ifndef MQTT_PRESS_TEST
     else {
         /* Generate topic message */
-        int msg_len = snprintf(msg_pub, sizeof(msg_pub), "{\"attr_name\":\"temperature\", \"attr_value\":\"%d\"}", cnt);
-        if (msg_len < 0) {
-            LOG("Error occur! Exit program");
-        }
-        rc = mqtt_publish(TOPIC_UPDATE, IOTX_MQTT_QOS1, msg_pub, msg_len);
-        if (rc < 0) {
-            LOG("error occur when publish");
-        }
+      //  int msg_len = snprintf(msg_pub, sizeof(msg_pub), "{\"attr_name\":\"temperature\", \"attr_value\":\"%d\"}", cnt);
+      //  if (msg_len < 0) {
+        //    LOG("Error occur! Exit program");
+       // }
+      //  rc = mqtt_publish(TOPIC_UPDATE, IOTX_MQTT_QOS1, msg_pub, msg_len);
+      //  if (rc < 0) {
+        //    LOG("error occur when publish");
+      //  }
 
-        LOG("packet-id=%u, publish topic msg=%s", (uint32_t)rc, msg_pub);
+      //  LOG("packet-id=%u, publish topic msg=%s", (uint32_t)rc, msg_pub);
+      {
+           if(first_get_shadow == 1 )
+            {
+                first_get_shadow = 0;
+                int msg_len = snprintf(msg_pub, sizeof(msg_pub), "{\"method\":\"get\"}");
+                rc = mqtt_publish(TOPIC_SHADOW, IOTX_MQTT_QOS1, msg_pub, msg_len);
+                LOG("packet-id=%u, publish topic msg=%s\r\n", (uint32_t)rc, msg_pub);
+                LOG("publish topic %s\r\n",TOPIC_SHADOW);
+            }
+      }
+      {
+           if(first_send_shadow == 1 )
+            {
+                first_send_shadow = 0;
+                int ver = get_shadow_version();
+                int msg_len;
+                if(ver>0)
+                {
+                    msg_len = snprintf(msg_pub, sizeof(msg_pub), "{\"method\": \"update\",\"state\": {\"reported\": {\"frequency\": \"fre0\"}},\"version\": %d}",ver);
+                }
+                else
+                {
+                    msg_len = snprintf(msg_pub, sizeof(msg_pub), "{\"method\": \"update\",\"state\": {\"reported\": {\"frequency\": \"fre0\"}},\"version\": %d}",1);
+                }
+                rc = mqtt_publish(TOPIC_SHADOW, IOTX_MQTT_QOS1, msg_pub, msg_len);
+                LOG("packet-id=%u, publish topic msg=%s\r\n", (uint32_t)rc, msg_pub);
+                LOG("publish topic %s\r\n",TOPIC_SHADOW);
+            }
+      }
+      {
+           if(shadow_reply == 1 )
+            {
+                shadow_reply = 0;
+                int ver = get_shadow_version();
+                int msg_len;
+                if(ver>0)
+                {
+                    int fre = get_led_fre();
+                    int pfre = 0;
+                    if(fre==2)
+                    {
+                        pfre = 0;
+                    }
+                    else if(fre ==5)
+                    {
+                        pfre = 1;
+                    }
+                    msg_len = snprintf(msg_pub, sizeof(msg_pub), "{\"method\": \"update\",\"state\": {\"reported\": {\"frequency\": \"fre%d\"}},\"version\": %d}",pfre,ver);
+                }
+                else
+                {
+                    msg_len = snprintf(msg_pub, sizeof(msg_pub), "{\"method\": \"update\",\"state\": {\"reported\": {\"frequency\": \"fre0\"}},\"version\": %d}",1);
+                }
+                rc = mqtt_publish(TOPIC_SHADOW, IOTX_MQTT_QOS1, msg_pub, msg_len);
+                LOG("packet-id=%u, publish topic msg=%s\r\n", (uint32_t)rc, msg_pub);
+                LOG("publish topic %s\r\n",TOPIC_SHADOW);
+            }
+      }
+      LOG("system is running %d\n",cnt);
     }
     cnt++;
     if (cnt < 200) {
@@ -282,4 +360,37 @@ void set_led_fre(int p_fre)
 int get_led_fre(void)
 {
     return led_fre;
+}
+
+
+void set_shadow_version(int p_ver)
+{
+    shadow_version = p_ver;
+}
+
+int get_shadow_version(void)
+{
+    return shadow_version;
+}
+
+void update_shadow_version(char *str)
+{
+    #define VER_FLAG "\"version\":"
+    int ver;
+    if(NULL != strstr(str,VER_FLAG))
+    {
+        char * result = strstr(str,VER_FLAG);
+        result += strlen(VER_FLAG);
+        if((*(result+1)==',')||(*(result+1)=='}'))
+        {
+            ver = *result-'0';
+        }
+        else if((*(result+2)==',')||(*(result+2)=='}'))
+        {
+            ver = (*result-'0')*10+(*(result+1)-'0');
+        }
+        printf("version %d\n",ver);
+        ver++;
+        set_shadow_version(ver);
+    }
 }
