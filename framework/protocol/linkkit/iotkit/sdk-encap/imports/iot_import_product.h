@@ -13,10 +13,10 @@
 
 
 
-#define PRODUCT_KEY             "a1J8I6ALiJ6"
+#define PRODUCT_KEY             "a1MwThUuCAA"
 #define PRODUCT_SECRET          ""
-#define DEVICE_NAME             "mydevice"
-#define DEVICE_SECRET           "hMOwEPdoHmtqpRYhfDWNSeNpMACbO6vV"
+#define DEVICE_NAME             "test"
+#define DEVICE_SECRET           "gmL1w0YNOa4Toq4on3Le7jAu8ToK5VwB"
 
 /**
  * @brief   获取设备的`Partner ID`, 仅用于紧密合作伙伴
